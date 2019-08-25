@@ -126,3 +126,10 @@ dmypy.json
 # hidden files
 .DS_Store
 ._.DS_Store
+._*
+
+# model and data
+*.jpg
+*.png
+*.h5
+*.t7
