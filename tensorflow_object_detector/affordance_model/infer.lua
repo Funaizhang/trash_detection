@@ -20,9 +20,9 @@ options = {
   imgDepthPath = opt.imgDepthPath,
   modelPath = '../affordance_model/model.t7',
   resultsPath = opt.resultPath,
-  outputScale = 1/8,
-  imgHeight = 424,
-  imgWidth = 512
+  outputScale = tonumber(opt.outputScale),
+  imgHeight = tonumber(opt.imgHeight),
+  imgWidth = tonumber(opt.imgWidth)
 }
 
 -- Parse user options from command line (i.e. imgColorPath=<image.png> imgDepthPath=<image.png> modelPath=<model.t7> th infer.lua)
