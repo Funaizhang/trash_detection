@@ -73,15 +73,39 @@ class Detector:
         self.object_pub = rospy.Publisher("objects", Detection2DArray, queue_size=1)
         self.bridge = CvBridge()
         self.image_sub = rospy.Subscriber("/kinect2/hd/image_color", Image, self.image_cb, queue_size=1, buff_size=2**24)
+        self.depth_sub = rospy.Subscriber('/kinect2/hd/image_depth_rect', Image, self.depth_cb, queue_size=1, buff_size=2**24)
+       
+        # define ROI
+        self.left = 400 
+        self.right = 1000
+        self.top = 200
+        self.bottom = 500
+
         self.sess = tf.Session(graph=detection_graph,config=config)
+
+    def get_roi(self, image):
+        roi = image[self.top:self.bottom, self.left:self.right, :]
+        return roi
+    
+    def depth_cb(self, data):
+        global dep_img_crop
+
+        try:
+            dep_img = self.bridge.imgmsg_to_cv2(data, "16UC1")
+            dep_img_crop = self.get_roi(dep_img)
+        except CvBridgeError as e:
+            print(e)
+ 
 
     def image_cb(self, data):
         objArray = Detection2DArray()
         try:
-            cv_image = self.bridge.imgmsg_to_cv2(data, "bgr8")
+            rgb_img = self.bridge.imgmsg_to_cv2(data, "bgr8")
+            rgb_img_crop = self.get_roi(rgb_img)
         except CvBridgeError as e:
             print(e)
-        image=cv2.cvtColor(cv_image,cv2.COLOR_BGR2RGB)
+
+        image=cv2.cvtColor(rgb_img_crop,cv2.COLOR_BGR2RGB)
 
         # the array based representation of the image will be used later in order to prepare the
         # result image with boxes and labels on it.
