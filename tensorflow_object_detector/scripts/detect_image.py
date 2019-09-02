@@ -46,7 +46,7 @@ MODEL_NAME =  'exported_model2'
 #MODEL_PATH = os.path.join(os.path.dirname(sys.path[0]), MODEL_NAME)
 MODEL_PATH = os.path.join(BASE_DIR, MODEL_NAME)
 # Path to frozen detection graph. This is the actual model that is used for the object detection.
-PATH_TO_CKPT = os.path.join(MODEL_PATH, 'frozen_inference_graph.pb')
+PATH_TO_CKPT = os.path.join(MODEL_PATH, 'frozen_inference_graph3.pb')
 ######### Set the label map file here ###########
 LABEL_NAME = 'bottle_label_map.pbtxt'
 # By default label maps are stored in data/labels/
@@ -55,11 +55,11 @@ PATH_TO_LABELS = os.path.join(BASE_DIR, 'data/labels', LABEL_NAME)
 ######### Set the number of classes here #########
 NUM_CLASSES = 3
 ######### Set the image directory here #########
-IMG_PATH = os.path.join(BASE_DIR, 'images')
-CROP_COLOR_PATH = os.path.join(BASE_DIR, 'simulation/color')
-CROP_DEPTH_PATH = os.path.join(BASE_DIR, 'simulation/depth')
-CROP_AFFORD_PATH = os.path.join(BASE_DIR, 'simulation/afford')
-CROP_RESULT_PATH = os.path.join(BASE_DIR, 'simulation/result')
+IMG_PATH = os.path.join(BASE_DIR, 'images/desk')
+CROP_COLOR_PATH = os.path.join(BASE_DIR, 'images/color')
+CROP_DEPTH_PATH = os.path.join(BASE_DIR, 'images/depth')
+CROP_AFFORD_PATH = os.path.join(BASE_DIR, 'images/afford')
+CROP_RESULT_PATH = os.path.join(BASE_DIR, 'images/result')
 ######### Set the lua model directory here #########
 PATH_TO_LUA = os.path.join(BASE_DIR, 'affordance_model', 'infer.lua')
 
@@ -92,7 +92,6 @@ def detectCrop(crops_dict):
     config = tf.ConfigProto(
         device_count = {'GPU': 0}
         )
-
 
     # Detection
     sess = tf.Session(graph=detection_graph,config=config)
@@ -127,7 +126,7 @@ def detectCrop(crops_dict):
                 feed_dict={image_tensor: image_np_expanded})
             #print('end detect ....')
 
-            boxes_to_label, image_show =vis_util.visualize_boxes_and_labels_on_image_array(
+            boxes_to_label, _, _ = vis_util.visualize_boxes_and_labels_on_image_array(
                 image,
                 np.squeeze(boxes),
                 np.squeeze(classes).astype(np.int32),
@@ -137,6 +136,8 @@ def detectCrop(crops_dict):
                 use_normalized_coordinates=True,
                 line_thickness=2)
 
+            #boxes_to_label = boxes_to_label[0]
+            print(boxes_to_label)
             # # show the original color image with boxes outlines
             # plt.imshow(cv2.cvtColor(image_show, cv2.COLOR_BGR2RGB))
             # plt.show()
@@ -151,6 +152,10 @@ def detectCrop(crops_dict):
             # initialize an empty list for this image to contain the name of all its crops
             crops_dict[imgIdx]['crops'] = []
             crops_dict[imgIdx]['result'] = os.path.join(CROP_RESULT_PATH, '{}_result.jpg'.format(imgIdx))
+            crops_dict[imgIdx]['result_whole'] = os.path.join(CROP_RESULT_PATH, '{}_whole.jpg'.format(imgIdx))
+            crops_dict[imgIdx]['color'] = imgPath
+            crops_dict[imgIdx]['depth'] = depPath
+            crops_dict[imgIdx]['afford'] = os.path.join(CROP_AFFORD_PATH, '{}.h5'.format(imgIdx))
 
             for i in range(len(boxes)):
                 # each boxes[i] is a tuple of coordinates
@@ -205,8 +210,8 @@ def runTorch(crops_dict, imgIdx):
         raise Exception('[!!!] invalid imgIdx')
 
     # init an empty red jpg here, same size as image_o
-    size_o = (crops_dict[imgIdx]['width'], crops_dict[imgIdx]['height'])
-    outimg = Image.new('RGB', size_o, (255, 0, 0))
+    size_whole = (crops_dict[imgIdx]['width'], crops_dict[imgIdx]['height'])
+    outimg = Image.new('RGB', size_whole, (255, 0, 0))
     
     # for each of the crops from this imgIdx, first make h5, 
     # then plot h5 as jpg, then overlay it on top of original jpg
@@ -248,9 +253,29 @@ def runTorch(crops_dict, imgIdx):
     # save the affordance map of whole image_o
     outimg.save(crops_dict[imgIdx]['result'], "JPEG")
 
+
+    # run the affordance of the entire original image if needed
+    if args.whole in ['true', 'True', 'y', 'Y', 'yes', 'Yes']:
+        # run Torch commands, from infer.lua located at PATH_TO_LUA
+        command = 'th ' + PATH_TO_LUA + ' -imgColorPath ' + crops_dict[imgIdx]['color'] + \
+                  ' -imgDepthPath ' + crops_dict[imgIdx]['depth'] + ' -resultPath ' + crops_dict[imgIdx]['afford'] + \
+                  ' -imgHeight ' + str(size_whole[1]) + ' -imgWidth ' + str(size_whole[0])
+
+        # print(command)
+        os.system(command)
+
+        # Check if Torch created .h5 is created
+        if not os.path.isfile(crops_dict[imgIdx]['afford']):
+            raise Exception('[!!!] h5 result not created')
+
+        # save affordance of whole image
+        _ = h5toJpg(crops_dict[imgIdx]['afford'], crops_dict[imgIdx]['result_whole'], size_whole)
+
+
     # Calculate average time Torch took per crop
-    time_th_ave = reduce(lambda x: x+y, time_th)/len(time_th) 
-    time_th_ave = round(time_th_ave, 2)
+    # time_th_ave = reduce(lambda x: x+y, time_th)/len(time_th)
+    # time_th_ave = round(time_th_ave, 2)
+    time_th_ave = 0
     return time_th_ave
 
 
@@ -259,12 +284,13 @@ def h5toJpg(inh5, outjpg, size):
 
     # List all group keys
     a_group_key = list(f.keys())[0]
-
     # plot jpg from h5 file
     dset = f[a_group_key]
     data = np.array(dset[:,:,:])
     # PIL takes in (w,h,c) uint8 0-255
     data = np.transpose(data[0], (1,2,0))
+
+    #data = [data[:,:,2], data[:,:,0], data[:,:,1]]
     data = data*255
     img = Image.fromarray(data.astype(np.uint8))
     # resize outcrop to original size
@@ -282,6 +308,7 @@ if __name__ == "__main__":
         description=__doc__,
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('--img', default='_color.jpg', help='specify color img name to crop, e.g. 0001_color.jpg (default returns every jpg')
+    parser.add_argument('--whole', default=False, help='whether to run affordance on the whole original image (default no)')
     args = parser.parse_args()
     
     # init empty dict of dict
